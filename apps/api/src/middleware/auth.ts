@@ -1,0 +1,55 @@
+import type { NextFunction, Request, Response } from "express";
+import jwt from "jsonwebtoken";
+import { User } from "../models/User.js";
+
+type JwtPayload = {
+  userId: string;
+  role: "admin";
+};
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        id: string;
+        email: string;
+        role: "admin";
+      };
+    }
+  }
+}
+
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  try {
+    const header = req.header("Authorization");
+    const token = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
+
+    if (!token) {
+      return res.status(401).json({
+        error: { code: "UNAUTHORIZED", message: "Missing bearer token", details: {} }
+      });
+    }
+
+    const secret = process.env.JWT_SECRET;
+
+    if (!secret) {
+      throw new Error("JWT_SECRET is required");
+    }
+
+    const payload = jwt.verify(token, secret) as JwtPayload;
+    const user = await User.findById(payload.userId);
+
+    if (!user || !user.isActive) {
+      return res.status(401).json({
+        error: { code: "UNAUTHORIZED", message: "Invalid user session", details: {} }
+      });
+    }
+
+    req.user = { id: user._id.toString(), email: user.email, role: user.role };
+    return next();
+  } catch {
+    return res.status(401).json({
+      error: { code: "UNAUTHORIZED", message: "Invalid or expired token", details: {} }
+    });
+  }
+}
