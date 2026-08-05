@@ -13,8 +13,8 @@ import { useAuthStore } from "../../store/authStore";
 export function Login() {
   const navigate = useNavigate();
   const { token, setSession } = useAuthStore();
-  const [email, setEmail] = useState("admin@menuai.local");
-  const [password, setPassword] = useState("ChangeMe123!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -75,10 +75,17 @@ export function Login() {
             </div>
           </div>
           <div className="mt-6 grid gap-4">
-            <Field label="Email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+            <Field
+              label="Email"
+              type="email"
+              placeholder="Enter email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
             <Field
               label="Password"
               type="password"
+              placeholder="Enter password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />

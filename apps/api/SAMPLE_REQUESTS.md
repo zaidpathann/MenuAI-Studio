@@ -11,7 +11,7 @@ http://localhost:4000
 ```bash
 curl -X POST http://localhost:4000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"admin@menuai.local\",\"password\":\"ChangeMe123!\"}"
+  -d "{\"email\":\"admin@menuai.com\",\"password\":\"Zaid@6222\"}"
 ```
 
 Use the returned token:
