@@ -14,7 +14,26 @@ dotenv.config();
 const app = express();
 const port = Number(process.env.PORT || 4000);
 
-app.use(cors({ origin: process.env.CLIENT_APP_URL || "http://localhost:5173" }));
+const allowedOrigins = process.env.CLIENT_APP_URL
+  ? process.env.CLIENT_APP_URL.split(",").map((s) => s.trim())
+  : ["http://localhost:5173", "http://localhost:3000", "http://localhost:5000"];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (
+        allowedOrigins.includes("*") ||
+        allowedOrigins.includes(origin) ||
+        !process.env.CLIENT_APP_URL
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
+    credentials: true
+  })
+);
 app.use(express.json({ limit: "20mb" }));
 
 app.get("/api/health", (_req, res) => {
