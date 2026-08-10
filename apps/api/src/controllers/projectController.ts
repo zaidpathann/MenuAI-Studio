@@ -79,7 +79,7 @@ export async function deleteProject(req: Request, res: Response) {
 }
 
 export async function uploadProjectPdf(req: Request, res: Response) {
-  const project = await Project.findOne({ _id: req.params.id, createdBy: req.user?.id });
+  const project = await Project.findOne({ _id: req.params.id, createdBy: req.user?.id }, "+pdfContentBase64");
 
   if (!project) {
     throw new AppError(404, "NOT_FOUND", "Project not found");
@@ -103,7 +103,9 @@ export async function uploadProjectPdf(req: Request, res: Response) {
     }
   ]);
   // Store base64 PDF so we can extract later without re-upload
-  (project as any).pdfContentBase64 = req.file.buffer.toString("base64");
+  const pdfBase64 = req.file.buffer.toString("base64");
+  (project as any).pdfContentBase64 = pdfBase64;
+  project.markModified("pdfContentBase64");
 
   await project.save();
 
@@ -123,6 +125,7 @@ export async function removeProjectPdf(req: Request, res: Response) {
   project.set("uploadedFiles", []);
   project.inputSource = undefined;
   (project as any).pdfContentBase64 = undefined;
+  project.markModified("pdfContentBase64");
   await project.save();
 
   res.json({ project });
@@ -143,31 +146,25 @@ export async function extractProjectData(req: Request, res: Response) {
   // Use NVIDIA API key (set in .env)
   const nvidiaKey = process.env.NVIDIA_API_KEY?.replace(/^"|"$/g, ""); // strip quotes if any
 
-  let extractedData: unknown;
+  if (!pdfBase64) {
+    throw new AppError(400, "MISSING_PDF", "No PDF file has been uploaded for this project. Please upload a PDF first.");
+  }
 
-  if (pdfBase64 && nvidiaKey) {
-    try {
-      // Real extraction from PDF using NVIDIA DeepSeek
-      extractedData = await extractMenuFromPdf(
-        pdfBase64,
-        project.restaurantName,
-        nvidiaKey
-      );
-    } catch (error) {
-      console.error("[extractProjectData] AI extraction failed, using fallback data:", error);
-      extractedData = buildFallbackData(
-        project.restaurantName,
-        project.uploadedFiles.at(-1)?.originalName,
-        "AI extraction service is temporarily unavailable. Please retry extraction in a few minutes."
-      );
-    }
-  } else {
-    // Fallback: build minimal skeleton from project info only
-    extractedData = buildFallbackData(
+  if (!nvidiaKey) {
+    throw new AppError(500, "MISSING_API_KEY", "NVIDIA_API_KEY is missing from environment variables.");
+  }
+
+  let extractedData: unknown;
+  try {
+    extractedData = await extractMenuFromPdf(
+      pdfBase64,
       project.restaurantName,
-      project.uploadedFiles.at(-1)?.originalName,
-      "Upload a PDF and ensure NVIDIA_API_KEY is set in .env to extract real menu items."
+      nvidiaKey
     );
+  } catch (error: any) {
+    console.error("[extractProjectData] AI extraction failed:", error);
+    const msg = error?.message || String(error);
+    throw new AppError(500, "EXTRACTION_FAILED", `Menu extraction failed: ${msg}`);
   }
 
   project.extractedData = extractedData;

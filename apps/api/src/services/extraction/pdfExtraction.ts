@@ -134,36 +134,50 @@ function getProviderRequestId(error: unknown): string | undefined {
 }
 
 async function createExtractionCompletion(openai: OpenAI, promptText: string) {
-  const maxAttempts = Math.max(Number(process.env.EXTRACTION_MAX_RETRIES || DEFAULT_MAX_ATTEMPTS), 1);
+  const envModel = process.env.NVIDIA_MODEL?.trim();
+  const rawCandidates: string[] = [
+    envModel,
+    "meta/llama-3.1-8b-instruct",
+    "meta/llama-3.3-70b-instruct",
+    "mistralai/mistral-7b-instruct-v0.3"
+  ].filter((m): m is string => Boolean(m));
+
+  // Filter unique candidates while preserving order
+  const candidateModels = Array.from(new Set(rawCandidates));
+  const maxAttemptsPerModel = Math.max(Number(process.env.EXTRACTION_MAX_RETRIES || 2), 1);
   let lastError: unknown;
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      return await openai.chat.completions.create({
-        model: "deepseek-ai/deepseek-v4-flash",
-        messages: [
+  for (const model of candidateModels) {
+    for (let attempt = 1; attempt <= maxAttemptsPerModel; attempt += 1) {
+      try {
+        console.log(`[pdfExtraction] Attempting extraction with model: ${model} (attempt ${attempt}/${maxAttemptsPerModel})`);
+        return await openai.chat.completions.create(
           {
-            role: "user",
-            content: promptText
-          }
-        ],
-        temperature: 0.2,
-        top_p: 0.95,
-        max_tokens: 4096,
-        stream: false
-      });
-    } catch (error) {
-      lastError = error;
+            model: model,
+            messages: [
+              {
+                role: "user",
+                content: promptText
+              }
+            ],
+            temperature: 0.1,
+            max_tokens: 4096,
+            stream: false
+          },
+          { timeout: 30000 }
+        );
+      } catch (error) {
+        lastError = error;
+        const status = getErrorStatus(error);
+        console.warn(`[pdfExtraction] Model ${model} attempt ${attempt} failed (status: ${status || "unknown"}): ${getErrorMessage(error)}`);
 
-      if (!isRetryableError(error) || attempt >= maxAttempts) {
-        break;
+        if (!isRetryableError(error) || attempt >= maxAttemptsPerModel) {
+          break;
+        }
+
+        const delayMs = BASE_RETRY_DELAY_MS * 2 ** (attempt - 1) + Math.floor(Math.random() * 300);
+        await sleep(delayMs);
       }
-
-      const delayMs = BASE_RETRY_DELAY_MS * 2 ** (attempt - 1) + Math.floor(Math.random() * 300);
-      console.warn(
-        `[pdfExtraction] Attempt ${attempt}/${maxAttempts} failed with transient error. Retrying in ${delayMs}ms.`
-      );
-      await sleep(delayMs);
     }
   }
 

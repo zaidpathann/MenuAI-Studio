@@ -1,8 +1,13 @@
 import axios from "axios";
 import { useAuthStore } from "../store/authStore";
 
+const rawApiUrl = import.meta.env.VITE_API_URL || "https://menuai-studio.onrender.com/api";
+const normalizedApiUrl = rawApiUrl.endsWith("/api")
+  ? rawApiUrl
+  : `${rawApiUrl.replace(/\/+$/, "")}/api`;
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "https://menuai-studio.onrender.com"
+  baseURL: normalizedApiUrl
 });
 
 api.interceptors.request.use((config) => {
