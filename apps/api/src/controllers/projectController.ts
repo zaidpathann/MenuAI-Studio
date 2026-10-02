@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import pdfParse from "pdf-parse";
 import { AppError } from "../middleware/errorHandler.js";
 import { ClientAccess } from "../models/ClientAccess.js";
 import { Design } from "../models/Design.js";
@@ -79,7 +80,7 @@ export async function deleteProject(req: Request, res: Response) {
 }
 
 export async function uploadProjectPdf(req: Request, res: Response) {
-  const project = await Project.findOne({ _id: req.params.id, createdBy: req.user?.id }, "+pdfContentBase64");
+  const project = await Project.findOne({ _id: req.params.id, createdBy: req.user?.id }, "+pdfContentBase64 +pdfText");
 
   if (!project) {
     throw new AppError(404, "NOT_FOUND", "Project not found");
@@ -102,10 +103,27 @@ export async function uploadProjectPdf(req: Request, res: Response) {
       uploadedAt: new Date()
     }
   ]);
-  // Store base64 PDF so we can extract later without re-upload
-  const pdfBase64 = req.file.buffer.toString("base64");
-  (project as any).pdfContentBase64 = pdfBase64;
-  project.markModified("pdfContentBase64");
+
+  // Extract raw text right upon upload
+  let extractedPdfText = "";
+  try {
+    const parsed = await pdfParse(req.file.buffer);
+    extractedPdfText = parsed.text?.trim() ?? "";
+  } catch (err) {
+    console.warn("[uploadProjectPdf] Failed to parse text from PDF buffer:", err);
+  }
+
+  (project as any).pdfText = extractedPdfText;
+  project.markModified("pdfText");
+
+  // Only store base64 if under 10MB to prevent MongoDB 16MB BSON size limit
+  if (req.file.size <= 10 * 1024 * 1024) {
+    (project as any).pdfContentBase64 = req.file.buffer.toString("base64");
+    project.markModified("pdfContentBase64");
+  } else {
+    (project as any).pdfContentBase64 = undefined;
+    project.markModified("pdfContentBase64");
+  }
 
   await project.save();
 
@@ -125,17 +143,18 @@ export async function removeProjectPdf(req: Request, res: Response) {
   project.set("uploadedFiles", []);
   project.inputSource = undefined;
   (project as any).pdfContentBase64 = undefined;
+  (project as any).pdfText = undefined;
   project.markModified("pdfContentBase64");
+  project.markModified("pdfText");
   await project.save();
 
   res.json({ project });
 }
 
 export async function extractProjectData(req: Request, res: Response) {
-  // Must fetch with pdfContentBase64 (select: false by default)
   const project = await Project.findOne(
     { _id: req.params.id, createdBy: req.user?.id },
-    "+pdfContentBase64"
+    "+pdfContentBase64 +pdfText"
   );
 
   if (!project) {
@@ -143,10 +162,10 @@ export async function extractProjectData(req: Request, res: Response) {
   }
 
   const pdfBase64 = (project as any).pdfContentBase64 as string | undefined;
-  // Use NVIDIA API key (set in .env)
+  const pdfText = (project as any).pdfText as string | undefined;
   const nvidiaKey = process.env.NVIDIA_API_KEY?.replace(/^"|"$/g, ""); // strip quotes if any
 
-  if (!pdfBase64) {
+  if (!pdfBase64 && !pdfText) {
     throw new AppError(400, "MISSING_PDF", "No PDF file has been uploaded for this project. Please upload a PDF first.");
   }
 
@@ -157,14 +176,17 @@ export async function extractProjectData(req: Request, res: Response) {
   let extractedData: unknown;
   try {
     extractedData = await extractMenuFromPdf(
-      pdfBase64,
+      { pdfBase64, pdfText },
       project.restaurantName,
       nvidiaKey
     );
   } catch (error: any) {
-    console.error("[extractProjectData] AI extraction failed:", error);
-    const msg = error?.message || String(error);
-    throw new AppError(500, "EXTRACTION_FAILED", `Menu extraction failed: ${msg}`);
+    console.error("[extractProjectData] AI extraction failed, falling back to default structure:", error);
+    extractedData = buildFallbackData(
+      project.restaurantName,
+      project.uploadedFiles?.[0]?.originalName,
+      error?.message || "AI extraction failed. Falling back to default layout structure."
+    );
   }
 
   project.extractedData = extractedData;

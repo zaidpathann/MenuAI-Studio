@@ -137,9 +137,9 @@ async function createExtractionCompletion(openai: OpenAI, promptText: string) {
   const envModel = process.env.NVIDIA_MODEL?.trim();
   const rawCandidates: string[] = [
     envModel,
-    "meta/llama-3.1-8b-instruct",
-    "meta/llama-3.3-70b-instruct",
-    "mistralai/mistral-7b-instruct-v0.3"
+    "google/diffusiongemma-26b-a4b-it",
+    "meta/muse-glimmer-30b",
+    "meta/llama-3.2-11b-vision-instruct"
   ].filter((m): m is string => Boolean(m));
 
   // Filter unique candidates while preserving order
@@ -164,7 +164,7 @@ async function createExtractionCompletion(openai: OpenAI, promptText: string) {
             max_tokens: 4096,
             stream: false
           },
-          { timeout: 30000 }
+          { timeout: 60000 }
         );
       } catch (error) {
         lastError = error;
@@ -191,14 +191,23 @@ async function createExtractionCompletion(openai: OpenAI, promptText: string) {
 }
 
 export async function extractMenuFromPdf(
-  pdfBase64: string,
+  input: { pdfBase64?: string; pdfText?: string } | string,
   restaurantName: string,
   apiKey: string
 ): Promise<ExtractedMenu> {
-  // Step 1: Decode base64 → Buffer → extract raw text via pdf-parse
-  const pdfBuffer = Buffer.from(pdfBase64, "base64");
-  const parsed = await pdfParse(pdfBuffer);
-  const menuText = parsed.text?.trim() ?? "";
+  let menuText = "";
+
+  if (typeof input === "string") {
+    const pdfBuffer = Buffer.from(input, "base64");
+    const parsed = await pdfParse(pdfBuffer);
+    menuText = parsed.text?.trim() ?? "";
+  } else if (input.pdfText?.trim()) {
+    menuText = input.pdfText.trim();
+  } else if (input.pdfBase64) {
+    const pdfBuffer = Buffer.from(input.pdfBase64, "base64");
+    const parsed = await pdfParse(pdfBuffer);
+    menuText = parsed.text?.trim() ?? "";
+  }
 
   if (!menuText) {
     throw new Error("pdf-parse could not extract any text from this PDF. It may be image-based.");

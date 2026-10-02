@@ -1,7 +1,9 @@
 import axios from "axios";
 import { useAuthStore } from "../store/authStore";
 
-const rawApiUrl = import.meta.env.VITE_API_URL || "https://menuai-studio.onrender.com/api";
+const rawApiUrl =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV ? "http://localhost:4000/api" : "https://menuai-studio.onrender.com/api");
 const normalizedApiUrl = rawApiUrl.endsWith("/api")
   ? rawApiUrl
   : `${rawApiUrl.replace(/\/+$/, "")}/api`;

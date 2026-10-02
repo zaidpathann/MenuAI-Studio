@@ -20,7 +20,8 @@ const projectSchema = new Schema(
     inputSource: { type: String, enum: ["pdf", "image", "manual"] },
     uploadedFiles: { type: [uploadedFileSchema], default: [] },
     publishedAt: { type: Date },
-    pdfContentBase64: { type: String, select: false }
+    pdfContentBase64: { type: String, select: false },
+    pdfText: { type: String, select: false }
   },
   { timestamps: true }
 );

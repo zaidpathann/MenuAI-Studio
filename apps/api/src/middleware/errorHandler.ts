@@ -21,8 +21,11 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
   }
 
   if (error?.name === "MulterError") {
+    const message = error.code === "LIMIT_FILE_SIZE"
+      ? "File is too large. Maximum PDF size allowed is 50MB."
+      : error.message;
     return res.status(400).json({
-      error: { code: "UPLOAD_ERROR", message: error.message, details: {} }
+      error: { code: "UPLOAD_ERROR", message, details: {} }
     });
   }
 

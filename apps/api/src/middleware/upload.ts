@@ -1,6 +1,6 @@
 import multer from "multer";
 
-const maxPdfSizeBytes = 10 * 1024 * 1024;
+const maxPdfSizeBytes = 50 * 1024 * 1024; // 50MB limit
 
 export const uploadPdf = multer({
   storage: multer.memoryStorage(),
